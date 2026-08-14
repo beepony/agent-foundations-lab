@@ -1,0 +1,58 @@
+const AGL={
+key:(lang)=>`agent-foundations-lab:attempt:v2:${lang}`,
+read(lang){try{return JSON.parse(localStorage.getItem(this.key(lang)))||{answers:{},selfScores:{}}}catch{return{answers:{},selfScores:{}}}},
+write(lang,v){localStorage.setItem(this.key(lang),JSON.stringify(v))},
+questions:{
+zh:{objective:[
+['Pi 收到“查看桌面文件”后，会直接将它转换为 ls 命令并执行。',false,'Pi 提供工具和执行环境；模型根据上下文和工具 Schema 决定是否调用工具。'],
+['Tool Result 必须回到模型上下文，模型才能基于真实观察继续推理。',true,'模型不直接读取文件系统；Tool Result 是 Runtime 交给模型的外部事实。'],
+['Tool Schema 的作用是让 Runtime 自动选择工具，因此模型不必看到工具描述。',false,'Tool Schema 是给模型看的工具契约；模型据此构造 Tool Call。'],
+['Tool Call ID 用于关联模型的调用请求和匹配的 Tool Result。',true,'同一个 call ID 让模型、Runtime、日志和 UI 确认结果属于哪次调用。'],
+['只停止 UI 显示而让 Shell 进程在后台继续运行，是正确的取消实现。',false,'取消必须传播到真实工具和子进程；否则会留下资源、安全和状态问题。'],
+['同名 bash 工具可以接到本机 Shell、容器沙箱或远程执行器。',true,'工具名是抽象接口；底层 Provider 可以替换。'],
+['Session 只需要保存最终助手回答，工具过程无需保存。',false,'Tool Call 和 Tool Result 是恢复、回放、审计和理解模型依据的重要轨迹。'],
+['超大的工具输出通常应在进入模型上下文前设置上限。',true,'大输出消耗 Token、淹没重点，也会降低后续推理可靠性。'],
+['System Prompt 本身就是不可绕过的硬安全边界。',false,'Prompt 是行为引导，不是强制执行；真正的边界在 Tool / Runtime / OS 层。'],
+['工具错误应以 isError: true 的 Tool Result 回给模型，而不应被静默隐藏。',true,'模型需要了解失败事实，才能解释、询问或采取合法的下一步。']],
+long:[
+['解释 Pi、LLM、工具、操作系统的职责边界。',4,'必须说明模型只负责决策；Runtime 调度工具；工具/Shell 执行真实操作；模型不直接拥有电脑权限。'],
+['模型请求前需要组装哪些信息？至少列出五类。',4,'可包括：System Prompt、AGENTS.md/Skill、工具 Schema、历史消息、过去 Tool Result、当前消息、模型配置、压缩摘要。'],
+['什么是 Tool Schema？它与工具实现代码有什么关系？',4,'应说明它是模型可见的工具契约，包含名称、描述、参数；模型据此调用，Runtime 的实现代码才真正执行。'],
+['解释 Tool Call、Tool Result 与 toolCallId 的关系。',4,'Tool Call 是模型提出的执行意图；Tool Result 是工具观察结果；call ID 将二者精确关联。'],
+['为什么 Tool Result 是 Agent 的“感官输入”？举三个例子。',4,'模型通过 Tool Result 获得外部事实。例如 read 读取文件、find 列目录、bash 获取测试结果、HTTP 读 API。'],
+['为什么不能将超大命令输出原样加入下一次模型请求？',4,'应包含 Token/上下文窗口、噪声与用户体验、传输可靠性，以及截断、分页、保存完整输出等做法。'],
+['从用户按 Escape 开始，解释正确的取消链路。',4,'TUI 发起 abort；Runtime 传播 AbortSignal；工具停止工作并终止子进程树；结果收敛为 aborted。'],
+['为什么安全策略不能只靠 Prompt，而应在 Runtime/Tool 层执行？',4,'模型可能误解或受提示注入影响；Prompt 无法强制 OS；Runtime 可使用 allowlist、路径校验、审批、沙箱和审计。'],
+['模型没调用工具却声称知道桌面内容，问题是什么？应如何防护？',8,'这是无依据回答/幻觉。应让模型先调用只读观察工具，且只基于 Runtime 产生的 Tool Result 回答。'],
+['工具返回 Permission denied 后，正确的下一轮链路是什么？',8,'Runtime 生成 isError Tool Result，写入 Session 并送入下一次模型请求；模型应如实解释或询问，不得虚构结果。'],
+['命令输出 500MB：设计截断、保存与继续读取策略。',8,'流式展示；设置字节/行数上限；完整输出保存到受控位置；Tool Result 说明截断；模型用 offset、limit、grep 等继续观察。'],
+['用户中途补充“只看 PDF”：为什么 steering 更合适？',8,'通常将其作为下一次模型调用前的 steering；模型据此收窄查询。若用户按 Escape，则应取消当前工具并终止进程。'],
+['综合设计：设计只读 Desktop 检查 Agent。',16,'应覆盖最小只读工具、相对路径/realpath 边界、禁止写入和网络、Session 审计、大文件/二进制/符号链接/权限错误处理，以及完整 Tool Call → Tool Result 循环。']]
+},
+en:{objective:[
+['Pi directly turns “list desktop files” into an ls command and executes it.',false,'Pi exposes tools and execution. The model decides whether to call a tool from context and schemas.'],
+['A Tool Result must return to model context so the model can reason from a real observation.',true,'The model does not read the file system. A Tool Result is the runtime’s external fact.'],
+['Tool Schema lets the Runtime choose a tool, so the model need not see tool descriptions.',false,'A Tool Schema is a model-visible contract that helps the model construct a Tool Call.'],
+['A Tool Call ID correlates a model request with its matching Tool Result.',true,'The shared ID lets the model, runtime, log, and UI associate one result with one call.'],
+['Stopping UI output while a shell process continues is a correct cancellation implementation.',false,'Cancellation must reach the real tool and child process, otherwise resources and side effects remain.'],
+['A bash tool can be backed by a local shell, a container sandbox, or a remote executor.',true,'The tool name is an abstraction; its provider can be swapped.'],
+['A Session only needs the final assistant response; tool activity need not be saved.',false,'Tool Calls and Results are necessary for recovery, replay, audit, and grounding.'],
+['Huge tool output should generally be bounded before entering model context.',true,'It consumes tokens, hides useful facts, and makes later reasoning less reliable.'],
+['A System Prompt by itself is an unbypassable hard security boundary.',false,'A prompt guides behavior; enforceable boundaries live in Tool, Runtime, and OS layers.'],
+['A tool failure should return to the model as an isError Tool Result, not be silently hidden.',true,'The model needs the failure fact to explain, ask, or take a legal next action.']],
+long:[
+['Explain responsibility boundaries between Pi, the LLM, tools, and the operating system.',4,'The model decides; the runtime dispatches; tools/Shell perform real operations; the model does not own computer permissions.'],
+['What is assembled before a model request? Name at least five categories.',4,'Examples: system prompt, AGENTS/skills, tool schemas, history, Tool Results, new message, model configuration, compaction summary.'],
+['What is a Tool Schema, and how does it relate to tool implementation code?',4,'It is a model-visible contract with name, description, and parameters. The model calls it; runtime implementation code executes it.'],
+['Explain the relationship between Tool Call, Tool Result, and toolCallId.',4,'A Tool Call is the model’s execution intent. A Tool Result is the observed result. The call ID correlates them.'],
+['Why is Tool Result an Agent’s sensory input? Give three examples.',4,'The model receives external facts through results: read files, find directories, bash tests, HTTP API data, etc.'],
+['Why should huge command output not be inserted raw into the next request?',4,'Discuss tokens/context window, noise and UX, reliability, and truncation/paging/full-output references.'],
+['Starting with Escape, explain a correct cancellation chain.',4,'TUI starts abort; runtime propagates AbortSignal; tool stops and terminates child processes; operation settles as aborted.'],
+['Why must security policy run in Runtime/Tool layers rather than only in a Prompt?',4,'Models can err or be injected; prompts cannot enforce OS behavior; runtime can use allowlists, validation, approval, sandboxing, and audit.'],
+['The model claims to know desktop contents without a tool call. What is wrong and how do you defend against it?',8,'It is ungrounded/hallucinated. Require a read-only observation tool and answers grounded in runtime-produced Tool Results.'],
+['What is the correct next-turn flow after Permission denied?',8,'Runtime creates an isError Tool Result, stores it, and sends it to the next request. The model must explain or ask, never invent a result.'],
+['A command outputs 500MB. Design truncation, retention, and follow-up observation.',8,'Stream display; byte/line caps; retain full output in a controlled location; signal truncation; use offset, limit, or grep for follow-up.'],
+['A user says “PDF only” mid-run. Why is steering appropriate?',8,'Steering is delivered before the next model call so the model narrows the query. Escape instead cancels the current tool and process.'],
+['Design a read-only Desktop inspection Agent.',16,'Cover minimal read-only tools, relative paths/realpath boundaries, no write or network, session audit, large/binary/symlink/permission handling, and the complete Tool Call → Tool Result loop.']]
+}}
+};
