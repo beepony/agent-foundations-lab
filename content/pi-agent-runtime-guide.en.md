@@ -6,7 +6,8 @@
 
 ---
 
-## 1. Start with the right mental model
+## Module 1: How does the model decide the next step?
+### 1. Start with the right mental model
 
 Pi does not understand this sentence by itself, and it does not mechanically translate it into `ls ~/Desktop`.
 
@@ -24,7 +25,7 @@ The model is not handed a terminal window or macOS file permissions. It can only
 
 ---
 
-## 2. One-page overview
+### 2. One-page overview
 
 ```text
 ┌─────────┐
@@ -80,7 +81,7 @@ A simple tool task normally contains at least two model requests:
 
 ---
 
-## 3. The participants and their boundaries
+### 3. The participants and their boundaries
 
 | Component | What it does | What it does not do |
 |---|---|---|
@@ -99,13 +100,12 @@ A useful rule is: **never collapse these responsibilities into “the AI did it.
 
 ---
 
-# 4. The detailed path, step by step
 
-## Step 0: What Pi prepared before you typed
+### 1.4 How Pi prepares the runtime environment
 
 Before the user message arrives, Pi has already assembled a working environment.
 
-### 0.1 It knows the current working directory
+#### 0.1 It knows the current working directory
 
 Pi has a current working directory (cwd), such as:
 
@@ -127,7 +127,7 @@ A model may request an absolute path or a shell shorthand:
 
 The shell expands `~` to the current user’s home directory. The model is not doing this expansion itself; the shell does it when the command runs.
 
-### 0.2 It loads instructions and context files
+#### 0.2 It loads instructions and context files
 
 Pi can load context from locations such as:
 
@@ -146,7 +146,7 @@ They might say, for example:
 - load a particular Skill before handling a document;
 - use a particular output format.
 
-### 0.3 It registers tools and explains them to the model
+#### 0.3 It registers tools and explains them to the model
 
 The enabled tool set depends on Pi configuration, Extensions, and startup options. Common tools include:
 
@@ -177,7 +177,92 @@ A schema is a tool instruction manual for the model: its name, purpose, and allo
 
 ---
 
-## Step 1: You submit the request
+### 1.5 How Pi builds a model request
+
+Pi does not send only the latest sentence. It assembles an entire request context:
+
+```text
+┌──────────────────────────────────────┐
+│ System Prompt                         │
+│ Agent role, rules, behavior guidance  │
+├──────────────────────────────────────┤
+│ Context files and loaded Skills       │
+│ Project-specific instructions         │
+├──────────────────────────────────────┤
+│ Tool definitions                      │
+│ Names, descriptions, argument schemas │
+├──────────────────────────────────────┤
+│ Conversation history                  │
+│ Prior messages and Tool Results       │
+├──────────────────────────────────────┤
+│ Current user message                  │
+│ “Show me the files on my Desktop.”    │
+└──────────────────────────────────────┘
+```
+
+Long sessions cannot grow forever. When needed, Pi can compact earlier material into a summary while retaining recent and important context. Compaction is lossy, but the full session file remains available for history and inspection.
+
+---
+
+### 1.6 How Pi sends a request to the model
+
+The Model Runtime uses the selected configuration:
+
+```text
+Provider: DeepSeek, Anthropic, OpenAI, Gemini, or another configured provider
+Model: a concrete model identifier
+Authentication: API key or subscription credentials
+Transport: SSE, WebSocket, or automatic selection where supported
+```
+
+The provider sends a streaming response. Text, reasoning blocks where available, and Tool Calls can arrive incrementally. Pi converts these updates into events that the terminal UI can render as they arrive.
+
+---
+
+### 1.7 How the model decides it needs an observation
+
+The model can reason approximately like this:
+
+```text
+The user asks about current files on a real computer.
+This cannot be answered from language knowledge alone.
+A suitable directory or shell tool is available.
+I should request a tool call first.
+```
+
+It may return a structured Tool Call:
+
+```json
+{
+  "type": "toolCall",
+  "id": "call_abc123",
+  "name": "bash",
+  "arguments": {
+    "command": "find ~/Desktop -maxdepth 1 -type f -print"
+  }
+}
+```
+
+It might instead request `ls -la ~/Desktop`, or use a dedicated `find` or `ls` tool if one is exposed.
+
+#### Who chooses the command?
+
+| Decision | Main owner |
+|---|---|
+| Whether external observation is needed | LLM |
+| Which enabled tool to request | LLM |
+| Command, path, and filter arguments | LLM |
+| Which tools exist and are enabled | Pi configuration / Runtime |
+| How a request is actually executed | Tool implementation |
+| How the filesystem enforces permissions | Operating system |
+
+Pi gives the model controlled hands and senses. The model decides how to use them within the tools it has been given.
+
+---
+
+## Module 2: How does Pi’s pipeline execute tools?
+
+### 2.1 How user input enters Pi
 
 You type:
 
@@ -208,7 +293,7 @@ This distinction matters when a user changes the task while tools are running.
 
 ---
 
-## Step 2: The user message enters the Session
+### 2.2 How a user message enters the Session
 
 Pi stores the prompt in its session state and normally persists it to a JSONL session file under a path like:
 
@@ -235,90 +320,7 @@ JSONL means one JSON object per line. It is convenient for append-oriented histo
 
 ---
 
-## Step 3: Pi builds the model request
-
-Pi does not send only the latest sentence. It assembles an entire request context:
-
-```text
-┌──────────────────────────────────────┐
-│ System Prompt                         │
-│ Agent role, rules, behavior guidance  │
-├──────────────────────────────────────┤
-│ Context files and loaded Skills       │
-│ Project-specific instructions         │
-├──────────────────────────────────────┤
-│ Tool definitions                      │
-│ Names, descriptions, argument schemas │
-├──────────────────────────────────────┤
-│ Conversation history                  │
-│ Prior messages and Tool Results       │
-├──────────────────────────────────────┤
-│ Current user message                  │
-│ “Show me the files on my Desktop.”    │
-└──────────────────────────────────────┘
-```
-
-Long sessions cannot grow forever. When needed, Pi can compact earlier material into a summary while retaining recent and important context. Compaction is lossy, but the full session file remains available for history and inspection.
-
----
-
-## Step 4: Pi sends the request to a model provider
-
-The Model Runtime uses the selected configuration:
-
-```text
-Provider: DeepSeek, Anthropic, OpenAI, Gemini, or another configured provider
-Model: a concrete model identifier
-Authentication: API key or subscription credentials
-Transport: SSE, WebSocket, or automatic selection where supported
-```
-
-The provider sends a streaming response. Text, reasoning blocks where available, and Tool Calls can arrive incrementally. Pi converts these updates into events that the terminal UI can render as they arrive.
-
----
-
-## Step 5: The model decides that it needs an observation
-
-The model can reason approximately like this:
-
-```text
-The user asks about current files on a real computer.
-This cannot be answered from language knowledge alone.
-A suitable directory or shell tool is available.
-I should request a tool call first.
-```
-
-It may return a structured Tool Call:
-
-```json
-{
-  "type": "toolCall",
-  "id": "call_abc123",
-  "name": "bash",
-  "arguments": {
-    "command": "find ~/Desktop -maxdepth 1 -type f -print"
-  }
-}
-```
-
-It might instead request `ls -la ~/Desktop`, or use a dedicated `find` or `ls` tool if one is exposed.
-
-### Who chooses the command?
-
-| Decision | Main owner |
-|---|---|
-| Whether external observation is needed | LLM |
-| Which enabled tool to request | LLM |
-| Command, path, and filter arguments | LLM |
-| Which tools exist and are enabled | Pi configuration / Runtime |
-| How a request is actually executed | Tool implementation |
-| How the filesystem enforces permissions | Operating system |
-
-Pi gives the model controlled hands and senses. The model decides how to use them within the tools it has been given.
-
----
-
-## Step 6: Pi receives and dispatches the Tool Call
+### 2.3 How Pi receives and dispatches a Tool Call
 
 A model cannot execute your computer directly. It returns an intention to call a tool. Pi’s runtime then:
 
@@ -341,7 +343,7 @@ that is a rendering of a Tool Call event. It is not evidence that the model itse
 
 ---
 
-## Step 7: How the bash tool reaches macOS
+### 2.4 How the bash tool interacts with macOS
 
 Pi’s local bash tool uses Node.js child-process support to launch the configured shell. In simplified form:
 
@@ -385,9 +387,9 @@ the command writes those paths to standard output.
 
 ---
 
-## Step 8: Streaming output, truncation, cancellation, and errors
+### 2.5 How execution handles output, cancellation, and errors
 
-### 8.1 Streaming output
+#### 8.1 Streaming output
 
 A shell command can write to:
 
@@ -398,13 +400,13 @@ stderr  error output
 
 Pi can collect output incrementally and emit updates to the TUI while a long command is still running.
 
-### 8.2 Output truncation
+#### 8.2 Output truncation
 
 A tool result is also model context. Pi should not place unlimited command output into a request. The tool can cap lines or bytes, retain the full output in a temporary controlled location, and tell the model that the displayed result was truncated.
 
 The model can then ask a narrower follow-up question using a path, `offset`, `limit`, `grep`, or a more specific command.
 
-### 8.3 User cancellation
+#### 8.3 User cancellation
 
 A correct cancellation chain is:
 
@@ -420,7 +422,7 @@ User presses Escape
 
 Stopping only the terminal animation is not enough. A background command that keeps running can consume resources, create unexpected side effects, and leave the runtime’s visible state out of sync with reality.
 
-### 8.4 Timeout
+#### 8.4 Timeout
 
 If a tool has a timeout budget:
 
@@ -431,7 +433,7 @@ timeout expires
   → model receives the failure as a Tool Result
 ```
 
-### 8.5 Missing files and permission errors
+#### 8.5 Missing files and permission errors
 
 A filesystem operation may return an error such as:
 
@@ -443,7 +445,7 @@ Pi should convert it into an error Tool Result rather than hide it. The model ca
 
 ---
 
-## Step 9: stdout becomes a structured Tool Result
+### 2.6 How stdout becomes a Tool Result
 
 After execution, Pi wraps the observation in a message linked to the original call ID:
 
@@ -473,7 +475,7 @@ It lets the model, runtime, session log, and UI all identify which exact call pr
 
 ---
 
-## Step 10: Pi sends the Tool Result back to the model
+### 2.7 How a Tool Result returns to the model
 
 The next model request now contains a local history like:
 
@@ -494,7 +496,7 @@ The model never reads the hard drive directly. It reads the structured observati
 
 ---
 
-## Step 11: The model writes the final response
+### 2.8 How the model produces a final answer
 
 With real data available, the model can return a grounded answer such as:
 
@@ -510,7 +512,7 @@ If it emits no further Tool Calls, the provider completes the response with a st
 
 ---
 
-# 5. The same flow as a sequence diagram
+### 2.9 Component collaboration in a sequence diagram
 
 ```text
 You             Pi TUI        AgentSession       LLM API        bash tool       Shell/filesystem
@@ -539,7 +541,7 @@ You             Pi TUI        AgentSession       LLM API        bash tool       
 
 ---
 
-# 6. What is the Agent loop?
+### 2.10 The Agent Loop: how a model keeps using tools
 
 A simplified Agent loop looks like this:
 
@@ -579,7 +581,8 @@ The loop is the mechanism that turns a model with language ability into an Agent
 
 ---
 
-# 7. Why Tool Results are an Agent’s senses
+## Module 3: How do we make an Agent reliable?
+### 3.1 Tool Results: how a model receives external facts
 
 A model only receives context and produces text or structured calls. Different tools give it different observations:
 
@@ -598,7 +601,7 @@ This is why an Agent is not simply “a more capable LLM.” It is a loop of pla
 
 ---
 
-# 8. Why Session history matters
+### 3.2 Session, recovery, and durable history
 
 Pi sessions are JSONL histories with IDs and parent IDs, so they can form a tree rather than only one irreversible chat line.
 
@@ -635,9 +638,9 @@ Why did the final answer have this evidence?
 
 ---
 
-# 9. Where Skills and Extensions participate
+### 3.3 Skills and Extensions: extending the runtime
 
-## Skill
+#### Skill
 
 A Skill is generally a focused instruction package, often Markdown, that tells a model how to handle a type of task:
 
@@ -650,7 +653,7 @@ A Skill is generally a focused instruction package, often Markdown, that tells a
 
 It mainly changes the model’s working context and method.
 
-## Extension
+#### Extension
 
 An Extension is TypeScript code that can participate more deeply in the runtime:
 
@@ -680,7 +683,7 @@ The model uses the abstraction; the runtime controls where and how execution occ
 
 ---
 
-# 10. Why the model cannot simply take over a computer
+### 3.4 Security boundaries: controlled action
 
 The model emits text and Tool Calls. A real action happens only when a registered tool accepts and executes the request.
 
@@ -713,13 +716,13 @@ The key distinction is:
 
 ---
 
-# 11. Three lessons for Agent builders
+### 3.5 What Agent builders should learn from this
 
-## 11.1 The LLM is the brain, not the whole Agent
+#### 11.1 The LLM is the brain, not the whole Agent
 
 The model can interpret intent, choose a tool, plan a next step, and explain a result. It does not itself provide filesystem access, process control, persistence, UI rendering, or security enforcement.
 
-## 11.2 Tool output must become the next model context
+#### 11.2 Tool output must become the next model context
 
 The model does not automatically know what a tool observed. The runtime must execute the tool, create a Tool Result, append it to the trajectory, and include it in the next request:
 
@@ -731,7 +734,7 @@ model requests tool
 → model reasons from the fact
 ```
 
-## 11.3 Production difficulty is control systems, not Tool Call syntax
+#### 11.3 Production difficulty is control systems, not Tool Call syntax
 
 A demonstration can be short:
 
@@ -751,7 +754,7 @@ These runtime concerns determine whether an Agent is trustworthy in practice.
 
 ---
 
-# 12. Final summary
+### 3.6 Final summary: one complete Agent loop
 
 The Desktop example is not a natural-language sentence magically turning into a system command. It is a closed loop:
 
@@ -770,7 +773,7 @@ user intent
 
 ---
 
-## Reference: relevant Pi files and documentation
+#### Reference: relevant Pi files and documentation
 
 - Pi overview: `/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/README.md`
 - Session format: `/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/docs/session-format.md`
