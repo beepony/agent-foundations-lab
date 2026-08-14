@@ -25,6 +25,7 @@
       if (line.startsWith('```')) { closeList(); if (!inCode) { inCode = true; code = [] } else { output.push(`<pre><code>${escape(code.join('\n'))}</code></pre>`); inCode = false } i++; continue }
       if (inCode) { code.push(line); i++; continue }
       if (!line.trim()) { closeList(); i++; continue }
+      if (/^-{3,}$/.test(line.trim())) { closeList(); output.push('<hr>'); i++; continue }
       const heading = /^(#{1,3})\s+(.+)$/.exec(line)
       if (heading) { closeList(); const level = heading[1].length; const text = heading[2]; const id = headingId(text); output.push(`<h${level} id="${id}">${inline(text)}</h${level}>`); i++; continue }
       if (line.startsWith('> ')) { closeList(); output.push(`<blockquote class="callout">${inline(line.slice(2))}</blockquote>`); i++; continue }
